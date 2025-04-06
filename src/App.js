@@ -58,11 +58,9 @@ function App() {
   const { isOpen: isImageOpen, onOpen: onImageOpen, onClose: onImageClose } = useDisclosure();
   const { isOpen: isFriendRequestsOpen, onOpen: onFriendRequestsOpen, onClose: onFriendRequestsClose } = useDisclosure();
 
-  // const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-  // const wsUrl = process.env.REACT_APP_WS_URL || 'ws://localhost:8000/ws';
   const apiUrl = 'https://chitchat-f4e6.onrender.com';
   const wsUrl = 'wss://chitchat-f4e6.onrender.com/ws';
-  // Enhanced color scheme
+
   const primaryBg = useColorModeValue('#F7FAFC', '#0D0D0D');
   const secondaryBg = useColorModeValue('#EDF2F7', '#1C1C1C');
   const primaryText = useColorModeValue('#1A202C', '#FFFFFF');
@@ -84,7 +82,6 @@ function App() {
   const secondaryTextColor = useColorModeValue(secondaryText, secondaryText);
   const borderColor = useColorModeValue('#E2E8F0', '#2B2B2B');
 
-  // Animations
   const pulse = keyframes`
     0% { transform: scale(1); }
     50% { transform: scale(1.05); }
@@ -128,21 +125,14 @@ function App() {
       const requestsRes = await fetch(`${apiUrl}/friend-requests`, { headers: { 'Authorization': `Bearer ${token}` } });
       const requestsData = await requestsRes.json();
       if (!requestsRes.ok) throw new Error(requestsData.detail || 'Failed to fetch friend requests');
-      
       setFriendRequests(requestsData);
       setFriendRequestCount(requestsData.filter(req => req.status === 'pending').length);
 
-      // Optional suggestions fetch
-      try {
-        const suggestionsRes = await fetch(`${apiUrl}/users/suggestions`, { headers: { 'Authorization': `Bearer ${token}` } });
-        const suggestionsData = await suggestionsRes.json();
-        if (suggestionsRes.ok) {
-          setSuggestedFriends(suggestionsData.slice(0, 5));
-        } else {
-          setSuggestedFriends([]); // Fallback if suggestions endpoint fails
-        }
-      } catch (suggestionError) {
-        console.warn('Suggestions fetch failed:', suggestionError.message);
+      const suggestionsRes = await fetch(`${apiUrl}/users/suggestions`, { headers: { 'Authorization': `Bearer ${token}` } });
+      const suggestionsData = await suggestionsRes.json();
+      if (suggestionsRes.ok) {
+        setSuggestedFriends(suggestionsData.slice(0, 5));
+      } else {
         setSuggestedFriends([]);
       }
     } catch (e) {
@@ -175,25 +165,6 @@ function App() {
         status: 'info',
         duration: 5000,
         isClosable: true,
-        render: () => (
-          <MotionBox
-            bg={notificationBadge}
-            color="white"
-            p={3}
-            borderRadius="lg"
-            initial={{ y: -100 }}
-            animate={{ y: 0 }}
-            exit={{ y: -100 }}
-          >
-            <HStack>
-              <FaBell />
-              <VStack align="start" spacing={0}>
-                <Text fontWeight="bold">New Friend Request!</Text>
-                <Text fontSize="sm">{message.sender_username} wants to connect</Text>
-              </VStack>
-            </HStack>
-          </MotionBox>
-        ),
       });
     }
   }, [currentUsername, toast, fetchFriendRequests]);
@@ -282,8 +253,13 @@ function App() {
     fetchFriendRequests();
     const ws = new WebSocket(`${wsUrl}?token=${token}`);
     socketRef.current = ws;
-    ws.onopen = () => setIsSocketConnected(true);
+
+    ws.onopen = () => {
+      console.log('WebSocket connected successfully');
+      setIsSocketConnected(true);
+    };
     ws.onmessage = (event) => {
+      console.log('WebSocket message received:', event.data);
       const data = JSON.parse(event.data);
       switch (data.type) {
         case 'message':
@@ -309,13 +285,21 @@ function App() {
           if (data.data.username === selectedUser) setIsTyping(data.data.isTyping);
           break;
         default:
-          break;
+          console.warn('Unknown WebSocket message type:', data.type);
       }
     };
-    ws.onclose = () => setIsSocketConnected(false);
+    ws.onclose = (event) => {
+      console.log('WebSocket closed with code:', event.code, 'reason:', event.reason);
+      setIsSocketConnected(false);
+    };
     ws.onerror = (error) => console.error('WebSocket error:', error);
     fetchConversations();
-    return () => ws.close(1000, 'Component unmounted');
+
+    return () => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close(1000, 'Component unmounted');
+      }
+    };
   }, [token, fetchCurrentUser, fetchFriendRequests, handleNewMessage, handleMessageRead, handleMessageEdit, handleMessageDelete, handleUserStatus, handleFriendAccepted, fetchConversations, selectedUser, wsUrl]);
 
   useEffect(() => {
